@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Informerad sökning – Girig bäst först &amp; A*</title>
+  <meta name="description" content="Presentation om informerad sökning: Manhattanavstånd, euklidiskt avstånd, girig bäst först och A* i en interaktiv labyrint.">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f4f5f7;
+      --text: #1b1f24;
+      --muted: #5c6670;
+      --accent: #2f6fed;
+      --accent2: #e8780c;
+      --border: #e1e4e8;
+      --code-bg: #f0f2f5;
+
+      --wall: #1f2933;
+      --floor: #ffffff;
+      --visited: #bcd4ff;
+      --frontier: #ffc37a;
+      --path: #f5b301;
+      --start: #1f9d55;
+      --goal: #d64545;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1216;
+        --surface: #181d23;
+        --text: #e8ebef;
+        --muted: #9aa5b1;
+        --accent: #6c9bff;
+        --accent2: #ff9a3d;
+        --border: #2a313a;
+        --code-bg: #12161b;
+
+        --wall: #05070a;
+        --floor: #1d232b;
+        --visited: #2b4a86;
+        --frontier: #b8741f;
+        --path: #f5c542;
+        --start: #3ecf8e;
+        --goal: #ff6b6b;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; scroll-padding-top: 70px; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header.nav {
+      position: sticky; top: 0;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+    .nav-inner {
+      max-width: 1000px; margin: 0 auto; padding: 12px 20px;
+      display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .nav-inner nav a { margin-left: 16px; color: var(--muted); font-size: 0.92rem; }
+    .nav-inner nav a:hover { color: var(--text); text-decoration: none; }
+
+    main { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
+    section { padding: 60px 0; border-bottom: 1px solid var(--border); }
+    section:last-of-type { border-bottom: none; }
+    h1 { font-size: clamp(2rem, 6vw, 3.2rem); line-height: 1.15; margin-bottom: 14px; }
+    h2 { font-size: 1.6rem; margin-bottom: 16px; }
+    h3 { font-size: 1.1rem; margin-bottom: 6px; }
+    p + p { margin-top: 12px; }
+    .lead { font-size: 1.15rem; color: var(--muted); max-width: 680px; }
+    .muted { color: var(--muted); }
+
+    .buttons { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: 9px 18px; border-radius: 8px;
+      border: 1px solid var(--accent); font-weight: 600; font-size: 0.95rem;
+      background: transparent; color: var(--accent); cursor: pointer; font-family: inherit;
+    }
+    .btn:hover { text-decoration: none; opacity: 0.85; }
+    .btn.primary { background: var(--accent); color: #fff; }
+    .btn.subtle { border-color: var(--border); color: var(--text); }
+
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .card ul { margin: 8px 0 0 18px; color: var(--muted); font-size: 0.95rem; }
+    .card ul li { margin-top: 3px; }
+    .formula {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      background: var(--code-bg); border: 1px solid var(--border);
+      padding: 8px 12px; border-radius: 8px; display: inline-block; margin: 8px 0; font-size: 0.95rem;
+    }
+    pre.code {
+      background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px 16px; overflow-x: auto; font-size: 0.88rem; line-height: 1.5; margin-top: 16px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    /* SVG-diagram */
+    .diagram { width: 100%; max-width: 440px; height: auto; display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+    .diagram .gl { stroke: var(--border); stroke-width: 1; fill: none; }
+    .diagram .man { stroke: var(--accent); stroke-width: 4; fill: none; stroke-linejoin: round; }
+    .diagram .euc { stroke: var(--accent2); stroke-width: 3; fill: none; stroke-dasharray: 8 6; }
+    .diagram .pt-s { fill: var(--start); }
+    .diagram .pt-g { fill: var(--goal); }
+    .diagram text { fill: var(--text); font-size: 13px; font-family: system-ui, sans-serif; }
+    .two-col { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: center; margin-top: 20px; }
+    .legend-line { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.95rem; }
+    .swatch { width: 28px; height: 0; border-top: 4px solid var(--accent); display: inline-block; }
+    .swatch.dash { border-top: 3px dashed var(--accent2); }
+
+    /* Labyrint-demo */
+    .demo-controls { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end; margin: 20px 0 14px; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; color: var(--muted); }
+    select, input[type=range] { font-family: inherit; font-size: 0.95rem; }
+    select {
+      padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text);
+    }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    canvas#maze { width: 100%; display: block; border: 1px solid var(--border); border-radius: 10px; background: var(--floor); cursor: pointer; }
+    .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin-top: 14px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+    .stat .v { font-size: 1.3rem; font-weight: 700; }
+    .stat .l { font-size: 0.8rem; color: var(--muted); }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 0.85rem; color: var(--muted); }
+    .legend span.box { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--border); }
+
+    table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 0.93rem; }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .table-wrap { overflow-x: auto; }
+    .ok { color: var(--start); font-weight: 600; }
+    .bad { color: var(--goal); font-weight: 600; }
+
+    footer { text-align: center; padding: 32px 20px; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <strong>Informerad sökning</strong>
+      <nav>
+        <a href="#intro">Intro</a>
+        <a href="#heuristik">Heuristiker</a>
+        <a href="#algoritmer">Algoritmer</a>
+        <a href="#labyrint">Labyrint</a>
+        <a href="#slutsats">Slutsats</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <section id="hem">
+      <h1>Informerad sökning</h1>
+      <p class="lead">
+        Hur hittar en dator vägen genom en labyrint? Genom att inte leta blint, utan använda en
+        kvalificerad gissning om hur långt det är kvar till målet. Här jämför vi
+        <strong>girig bäst först</strong> och <strong>A*</strong> med <strong>Manhattanavstånd</strong>
+        och <strong>euklidiskt avstånd</strong>.
+      </p>
+      <div class="buttons">
+        <a class="btn primary" href="#labyrint">Gå till labyrinten</a>
+        <a class="btn" href="#intro">Börja från början</a>
+      </div>
+    </section>
+
+    <section id="intro">
+      <h2>Vad är informerad sökning?</h2>
+      <p class="lead">
+        Oinformerad sökning, som bredden först, tittar åt alla håll lika mycket eftersom den inte vet var målet ligger.
+        Informerad sökning får en hjälpfunktion, en <em>heuristik</em>, som uppskattar avståndet kvar till målet.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <h3>g(n)</h3>
+          <p class="muted">Verklig kostnad från start till noden n, alltså antalet steg vi redan gått.</p>
+        </div>
+        <div class="card">
+          <h3>h(n)</h3>
+          <p class="muted">Heuristik: uppskattad kostnad från n till målet. Det är den "informerade" delen.</p>
+        </div>
+        <div class="card">
+          <h3>f(n)</h3>
+          <p class="muted">Prioritet i kön. Algoritmen expanderar alltid noden med lägst f(n) härnäst.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="heuristik">
+      <h2>Två sätt att mäta avstånd</h2>
+      <p class="lead">På ett rutnät kan vi uppskatta avståndet till målet på två vanliga sätt.</p>
+
+      <div class="two-col">
+        <svg class="diagram" viewBox="0 0 360 200" role="img" aria-label="Manhattanavstånd som trappsteg jämfört med euklidiskt avstånd som rak linje">
+          <path class="gl" d="M0 0V200M40 0V200M80 0V200M120 0V200M160 0V200M200 0V200M240 0V200M280 0V200M320 0V200M360 0V200M0 0H360M0 40H360M0 80H360M0 120H360M0 160H360M0 200H360"/>
+          <path class="man" d="M40 160H280V40"/>
+          <path class="euc" d="M40 160L280 40"/>
+          <circle class="pt-s" cx="40" cy="160" r="7"/>
+          <circle class="pt-g" cx="280" cy="40" r="7"/>
+          <text x="30" y="184">Start</text>
+          <text x="268" y="26">Mål</text>
+          <text x="150" y="184">Δx = 6</text>
+          <text x="292" y="105">Δy = 3</text>
+        </svg>
+
+        <div>
+          <h3>Manhattanavstånd</h3>
+          <div class="formula">h = |x₁ − x₂| + |y₁ − y₂|</div>
+          <p class="muted">Summan av stegen i sidled och höjdled, som att gå längs gatorna i Manhattan. Här: 6 + 3 = 9.</p>
+          <div class="legend-line"><span class="swatch"></span> Manhattan</div>
+
+          <h3 style="margin-top:18px">Euklidiskt avstånd</h3>
+          <div class="formula">h = √((x₁ − x₂)² + (y₁ − y₂)²)</div>
+          <p class="muted">Fågelvägen, den raka linjen mellan punkterna. Här: √45 ≈ 6,7.</p>
+          <div class="legend-line"><span class="swatch dash"></span> Euklidiskt</div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Tillåtlig heuristik</h3>
+          <p class="muted">En heuristik är <em>tillåtlig</em> om den aldrig överskattar det verkliga avståndet. Då garanterar A* den kortaste vägen.</p>
+        </div>
+        <div class="card">
+          <h3>Vilken är bäst?</h3>
+          <ul>
+            <li>Vid rörelse i fyra riktningar är båda tillåtliga.</li>
+            <li>Manhattan ≥ Euklidiskt, så den ger en mer informerad gissning.</li>
+            <li>Med diagonala steg skulle Manhattan överskatta, och då är Euklidiskt det säkra valet.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="algoritmer">
+      <h2>Girig bäst först och A*</h2>
+      <p class="lead">Båda väljer ut den mest lovande noden i kön. Skillnaden är hur de definierar "mest lovande".</p>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Girig bäst först</h3>
+          <div class="formula">f(n) = h(n)</div>
+          <p class="muted">Går alltid mot den nod som <em>ser</em> närmast målet ut och ignorerar hur långt vi redan gått.</p>
+          <ul>
+            <li>Snabb och besöker oftast få noder</li>
+            <li>Garanterar inte kortaste vägen</li>
+            <li>Kan gå in i återvändsgränder</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>A*</h3>
+          <div class="formula">f(n) = g(n) + h(n)</div>
+          <p class="muted">Väger ihop kostnaden hittills och den uppskattade resten.</p>
+          <ul>
+            <li>Optimal om h är tillåtlig</li>
+            <li>Komplett, hittar en väg om det finns någon</li>
+            <li>Kan kräva mer minne och fler besökta noder</li>
+          </ul>
+        </div>
+      </div>
+
+<pre class="code">öppen = {start};  g[start] = 0
+medan öppen inte är tom:
+    n = noden i öppen med lägst f(n)
+    om n == mål: returnera vägen via förälder[]
+    för varje granne m till n:
+        om g[n] + 1 &lt; g[m]:
+            g[m] = g[n] + 1
+            förälder[m] = n
+            lägg till m i öppen
+# Girig bäst först använder f(n) = h(n) i stället</pre>
+    </section>
+
+    <section id="labyrint">
+      <h2>Prova själv i labyrinten</h2>
+      <p class="lead">
+        Välj algoritm och avstånd och tryck på <strong>Kör</strong>. Du kan också klicka på rutorna för att
+        bygga om väggar. <span class="muted">Grönt S är start och rött M är mål.</span>
+      </p>
+
+      <div class="demo-controls">
+        <label class="field">Algoritm
+          <select id="algo">
+            <option value="astar">A*</option>
+            <option value="greedy">Girig bäst först</option>
+          </select>
+        </label>
+        <label class="field">Heuristik
+          <select id="heur">
+            <option value="manhattan">Manhattanavstånd</option>
+            <option value="euclid">Euklidiskt avstånd</option>
+          </select>
+        </label>
+        <label class="field">Genvägar i labyrinten
+          <select id="extra">
+            <option value="0">Inga (en enda väg)</option>
+            <option value="0.1" selected>Några</option>
+            <option value="0.3">Många</option>
+          </select>
+        </label>
+        <label class="field">Hastighet
+          <input type="range" id="speed" min="5" max="600" value="80">
+        </label>
+        <div class="btn-row">
+          <button class="btn primary" id="run">Kör</button>
+          <button class="btn subtle" id="step">Ett steg</button>
+          <button class="btn subtle" id="reset">Återställ</button>
+          <button class="btn subtle" id="newmaze">Ny labyrint</button>
+        </div>
+      </div>
+
+      <canvas id="maze" role="img" aria-label="Labyrint där sökningen visas steg för steg"></canvas>
+
+      <div class="legend">
+        <span><span class="box" style="background:var(--frontier)"></span>Kö (kandidater)</span>
+        <span><span class="box" style="background:var(--visited)"></span>Besökt</span>
+        <span><span class="box" style="background:var(--path)"></span>Hittad väg</span>
+        <span><span class="box" style="background:var(--wall)"></span>Vägg</span>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="v" id="s-status">Redo</div><div class="l">Status</div></div>
+        <div class="stat"><div class="v" id="s-exp">0</div><div class="l">Besökta noder</div></div>
+        <div class="stat"><div class="v" id="s-open">1</div><div class="l">Noder i kön</div></div>
+        <div class="stat"><div class="v" id="s-len">–</div><div class="l">Väglängd (steg)</div></div>
+      </div>
+
+      <h3 style="margin-top:28px">Jämförelse i den här labyrinten</h3>
+      <p class="muted">Varje färdig körning läggs till här. Tabellen töms när labyrinten ändras.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Algoritm</th><th>Heuristik</th><th>Besökta</th><th>Väglängd</th><th>Kortast?</th></tr>
+          </thead>
+          <tbody id="results">
+            <tr><td colspan="5" class="muted">Inga körningar än.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Saker att testa</h3>
+          <ul>
+            <li>Kör A* och girig med samma heuristik. Hittar giriga en längre väg?</li>
+            <li>Byt från Manhattan till Euklidiskt i A*. Hur ändras antalet besökta noder?</li>
+            <li>Sätt genvägar till "Inga". Då finns bara en väg och båda algoritmerna hittar den.</li>
+            <li>Klicka och bygg en lång vägg framför målet och se hur girig fastnar.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="slutsats">
+      <h2>Slutsats</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th></th><th>Girig bäst först</th><th>A*</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Prioritet</td><td>h(n)</td><td>g(n) + h(n)</td></tr>
+            <tr><td>Kortaste väg garanterad?</td><td>Nej</td><td>Ja, om h är tillåtlig</td></tr>
+            <tr><td>Typisk hastighet</td><td>Snabb</td><td>Något långsammare</td></tr>
+            <tr><td>Bra när</td><td>Vi vill ha en väg snabbt</td><td>Vi vill ha den bästa vägen</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:20px" class="lead">
+        En bättre heuristik ger färre besökta noder, men den får aldrig överskatta om vi vill ha optimala svar.
+        Manhattanavstånd passar rutnät med fyra riktningar, medan euklidiskt avstånd är ett säkrare men svagare val.
+      </p>
+    </section>
+
+  </main>
+
+  <footer>Informerad sökning · Presentation</footer>
+
+  <script>
+  (() => {
+    const COLS = 31, ROWS = 21;
+    const start = { x: 1, y: 1 };
+    const goal = { x: COLS - 2, y: ROWS - 2 };
+    const idx = (x, y) => y * COLS + x;
+    const startIdx = idx(start.x, start.y);
+    const goalIdx = idx(goal.x, goal.y);
+
+    const canvas = document.getElementById('maze');
+    const ctx = canvas.getContext('2d');
+    const el = id => document.getElementById(id);
+    const algoSel = el('algo'), heurSel = el('heur'), extraSel = el('extra'), speedEl = el('speed');
+    const runBtn = el('run');
+
+    let grid;          // 0 = öppet, 1 = vägg
+    let search;
+    let optimal = -1;
+    let running = false;
+    let last = 0, acc = 0;
+    const results = new Map();
+
+    /* ---------- Labyrint ---------- */
+    function generateMaze(extra) {
+      grid = new Uint8Array(COLS * ROWS).fill(1);
+      const stack = [[1, 1]];
+      grid[idx(1, 1)] = 0;
+      const dirs = [[2, 0], [-2, 0], [0, 2], [0, -2]];
+      while (stack.length) {
+        const [x, y] = stack[stack.length - 1];
+        const opts = dirs
+          .map(d => [x + d[0], y + d[1], d])
+          .filter(([nx, ny]) => nx > 0 && ny > 0 && nx < COLS - 1 && ny < ROWS - 1 && grid[idx(nx, ny)] === 1);
+        if (!opts.length) { stack.pop(); continue; }
+        const [nx, ny, d] = opts[Math.floor(Math.random() * opts.length)];
+        grid[idx(x + d[0] / 2, y + d[1] / 2)] = 0;
+        grid[idx(nx, ny)] = 0;
+        stack.push([nx, ny]);
+      }
+      // Extra öppningar skapar genvägar så att algoritmerna kan skilja sig åt
+      const cand = [];
+      for (let y = 1; y < ROWS - 1; y++) {
+        for (let x = 1; x < COLS - 1; x++) {
+          if (grid[idx(x, y)] !== 1) continue;
+          const horiz = x % 2 === 0 && y % 2 === 1 && grid[idx(x - 1, y)] === 0 && grid[idx(x + 1, y)] === 0;
+          const vert = x % 2 === 1 && y % 2 === 0 && grid[idx(x, y - 1)] === 0 && grid[idx(x, y + 1)] === 0;
+          if (horiz || vert) cand.push(idx(x, y));
+        }
+      }
+      for (let i = cand.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cand[i], cand[j]] = [cand[j], cand[i]];
+      }
+      const n = Math.floor(cand.length * extra);
+      for (let i = 0; i < n; i++) grid[cand[i]] = 0;
+    }
+
+    function bfsLength() {
+      const dist = new Int32Array(COLS * ROWS).fill(-1);
+      const q = [startIdx];
+      dist[startIdx] = 0;
+      for (let h = 0; h < q.length; h++) {
+        const c = q[h];
+        if (c === goalIdx) return dist[c];
+        const cx = c % COLS, cy = (c / COLS) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+          const ni = idx(nx, ny);
+          if (grid[ni] || dist[ni] !== -1) continue;
+          dist[ni] = dist[c] + 1;
+          q.push(ni);
+        }
+      }
+      return -1;
+    }
+
+    /* ---------- Heuristiker ---------- */
+    const H = {
+      manhattan: (x, y) => Math.abs(x - goal.x) + Math.abs(y - goal.y),
+      euclid: (x, y) => Math.hypot(x - goal.x, y - goal.y)
+    };
+
+    /* ---------- Sökning ---------- */
+    function newSearch(algo, heur) {
+      const n = COLS * ROWS;
+      const s = {
+        algo, heur,
+        g: new Float64Array(n).fill(Infinity),
+        parent: new Int32Array(n).fill(-1),
+        state: new Uint8Array(n),   // 0 osedd, 1 i kön, 2 besökt
+        open: [], expanded: 0, done: false, found: false, path: [], current: -1
+      };
+      s.g[startIdx] = 0;
+      s.state[startIdx] = 1;
+      s.open.push(startIdx);
+      return s;
+    }
+
+    function prio(s, i) {
+      const x = i % COLS, y = (i / COLS) | 0;
+      const h = H[s.heur](x, y);
+      return { f: s.algo === 'greedy' ? h : s.g[i] + h, h };
+    }
+
+    function stepSearch(s) {
+      if (s.done) return;
+      if (!s.open.length) { s.done = true; s.found = false; return; }
+
+      let bi = 0, bp = prio(s, s.open[0]);
+      for (let k = 1; k < s.open.length; k++) {
+        const p = prio(s, s.open[k]);
+        if (p.f < bp.f - 1e-9 || (Math.abs(p.f - bp.f) <= 1e-9 && p.h < bp.h - 1e-9)) { bi = k; bp = p; }
+      }
+      const cur = s.open.splice(bi, 1)[0];
+      s.state[cur] = 2;
+      s.expanded++;
+      s.current = cur;
+
+      if (cur === goalIdx) {
+        s.done = true; s.found = true;
+        for (let p = goalIdx; p !== -1; p = s.parent[p]) s.path.push(p);
+        return;
+      }
+
+      const cx = cur % COLS, cy = (cur / COLS) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+        const ni = idx(nx, ny);
+        if (grid[ni]) continue;
+        const tg = s.g[cur] + 1;
+        if (s.algo === 'greedy') {
+          if (s.state[ni] === 0) {
+            s.parent[ni] = cur; s.g[ni] = tg; s.state[ni] = 1; s.open.push(ni);
+          }
+        } else if (tg < s.g[ni]) {
+          s.parent[ni] = cur; s.g[ni] = tg;
+          if (s.state[ni] !== 1) { s.state[ni] = 1; s.open.push(ni); }
+        }
+      }
+    }
+
+    /* ---------- Rendering ---------- */
+    function css(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function fit() {
+      const w = canvas.clientWidth;
+      const cell = w / COLS;
+      const h = cell * ROWS;
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      canvas.style.height = h + 'px';
+      ctx.setTransform(canvas.width / w, 0, 0, canvas.height / h, 0, 0);
+      return { w, h, cell };
+    }
+
+    function draw() {
+      const { w, h, cell } = fit();
+      const c = {
+        wall: css('--wall'), floor: css('--floor'), visited: css('--visited'),
+        frontier: css('--frontier'), path: css('--path'),
+        start: css('--start'), goal: css('--goal'), accent: css('--accent')
+      };
+      ctx.clearRect(0, 0, w, h);
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const i = idx(x, y);
+          let col = c.floor;
+          if (grid[i]) col = c.wall;
+          else if (search.state[i] === 2) col = c.visited;
+          else if (search.state[i] === 1) col = c.frontier;
+          ctx.fillStyle = col;
+          ctx.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
+        }
+      }
+      ctx.fillStyle = c.path;
+      for (const p of search.path) {
+        ctx.fillRect((p % COLS) * cell, ((p / COLS) | 0) * cell, cell + 0.5, cell + 0.5);
+      }
+      if (!search.done && search.current >= 0) {
+        ctx.strokeStyle = c.accent;
+        ctx.lineWidth = 2;
+        ctx.strokeRect((search.current % COLS) * cell + 1, ((search.current / COLS) | 0) * cell + 1, cell - 2, cell - 2);
+      }
+      const mark = (pos, color, letter) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(pos.x * cell, pos.y * cell, cell + 0.5, cell + 0.5);
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.max(10, cell * 0.65)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(letter, pos.x * cell + cell / 2, pos.y * cell + cell / 2 + 1);
+      };
+      mark(start, c.start, 'S');
+      mark(goal, c.goal, 'M');
+    }
+
+    const algoName = a => (a === 'astar' ? 'A*' : 'Girig bäst först');
+    const heurName = h => (h === 'manhattan' ? 'Manhattan' : 'Euklidiskt');
+
+    function updateStats() {
+      el('s-exp').textContent = search.expanded;
+      el('s-open').textContent = search.open.length;
+      el('s-len').textContent = search.found ? search.g[goalIdx] : '–';
+      let status = 'Redo';
+      if (search.done) status = search.found ? 'Mål nått' : 'Ingen väg';
+      else if (running) status = 'Söker…';
+      else if (search.expanded > 0) status = 'Pausad';
+      el('s-status').textContent = status;
+      runBtn.textContent = running ? 'Pausa' : 'Kör';
+    }
+
+    function renderResults() {
+      const body = el('results');
+      if (!results.size) {
+        body.innerHTML = '<tr><td colspan="5" class="muted">Inga körningar än.</td></tr>';
+        return;
+      }
+      body.innerHTML = '';
+      for (const r of results.values()) {
+        const tr = document.createElement('tr');
+        let verdict;
+        if (!r.found) verdict = '<span class="bad">Ingen väg</span>';
+        else if (r.length === optimal) verdict = '<span class="ok">Ja</span>';
+        else verdict = '<span class="bad">Nej (+' + (r.length - optimal) + ')</span>';
+        tr.innerHTML =
+          '<td>' + algoName(r.algo) + '</td><td>' + heurName(r.heur) + '</td>' +
+          '<td>' + r.expanded + '</td><td>' + (r.found ? r.length : '–') + '</td><td>' + verdict + '</td>';
+        body.appendChild(tr);
+      }
+    }
+
+    function finish() {
+      running = false;
+      results.set(search.algo + '|' + search.heur, {
+        algo: search.algo, heur: search.heur, expanded: search.expanded,
+        found: search.found, length: search.found ? search.g[goalIdx] : -1
+      });
+      renderResults();
+    }
+
+    /* ---------- Styrning ---------- */
+    function resetSearch() {
+      running = false;
+      search = newSearch(algoSel.value, heurSel.value);
+      draw();
+      updateStats();
+    }
+
+    function newMaze() {
+      generateMaze(parseFloat(extraSel.value));
+      results.clear();
+      optimal = bfsLength();
+      renderResults();
+      resetSearch();
+    }
+
+    function loop(t) {
+      if (!running) return;
+      let dt = t - last;
+      last = t;
+      if (dt > 100) dt = 100;
+      acc += dt * parseFloat(speedEl.value) / 1000;
+      while (acc >= 1 && !search.done) { stepSearch(search); acc--; }
+      if (search.done) finish();
+      draw();
+      updateStats();
+      if (running) requestAnimationFrame(loop);
+    }
+
+    runBtn.addEventListener('click', () => {
+      if (running) { running = false; updateStats(); return; }
+      if (search.done) resetSearch();
+      running = true;
+      last = performance.now();
+      acc = 0;
+      updateStats();
+      requestAnimationFrame(loop);
+    });
+
+    el('step').addEventListener('click', () => {
+      running = false;
+      if (search.done) resetSearch();
+      stepSearch(search);
+      if (search.done) finish();
+      draw();
+      updateStats();
+    });
+
+    el('reset').addEventListener('click', resetSearch);
+    el('newmaze').addEventListener('click', newMaze);
+    extraSel.addEventListener('change', newMaze);
+    algoSel.addEventListener('change', resetSearch);
+    heurSel.addEventListener('change', resetSearch);
+
+    canvas.addEventListener('click', e => {
+      const rect = canvas.getBoundingClientRect();
+      const cell = rect.width / COLS;
+      const x = Math.floor((e.clientX - rect.left) / cell);
+      const y = Math.floor((e.clientY - rect.top) / cell);
+      if (x < 1 || y < 1 || x > COLS - 2 || y > ROWS - 2) return;
+      const i = idx(x, y);
+      if (i === startIdx || i === goalIdx) return;
+      grid[i] = grid[i] ? 0 : 1;
+      results.clear();
+      optimal = bfsLength();
+      renderResults();
+      resetSearch();
+    });
+
+    window.addEventListener('resize', draw);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+
+    newMaze();
+  })();
+  </script>
+
+</body>
+</html>
